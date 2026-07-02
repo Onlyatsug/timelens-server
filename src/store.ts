@@ -12,7 +12,7 @@ let notificationsCache: Map<string, Notification> = new Map();
 let tagsCache: Set<string> = new Set();
 
 // 🔥 FUNÇÃO DE INICIALIZAÇÃO (Roda apenas quando o servidor liga)
-export async function initializeServerCache() {
+async function initializeServerCache() {
   console.log('⚡ [Cache] Iniciando pré-carregamento de dados do Firestore...');
   try {
     const [usersSnap, locationsSnap, postsSnap, commentsSnap, notificationsSnap, tagsSnap] = await Promise.all([
@@ -38,7 +38,24 @@ export async function initializeServerCache() {
     console.log(`📊 Status: ${usersCache.size} Users | ${postsCache.size} Posts | ${locationsCache.size} Locations`);
   } catch (error) {
     console.error('❌ [Cache] Erro ao pré-carregar dados:', error);
+    // Não guarda a promise "resolvida com erro" — deixa a próxima chamada tentar de novo
+    cacheReadyPromise = null;
+    throw error;
   }
+}
+
+// 🧠 Em ambiente serverless (Vercel) não existe um "boot" único do processo:
+// cada invocação pode cair numa instância nova (cold start) ou reaproveitar
+// uma instância já quente. O app.listen() do server.ts NUNCA roda na Vercel,
+// então o cache não pode depender dele. Por isso ele é inicializado de forma
+// preguiçosa (lazy) e memorizada na primeira requisição que precisar dele.
+let cacheReadyPromise: Promise<void> | null = null;
+
+export function ensureCacheReady(): Promise<void> {
+  if (!cacheReadyPromise) {
+    cacheReadyPromise = initializeServerCache();
+  }
+  return cacheReadyPromise;
 }
 
 // ---------- Usuários (Otimizados) ----------

@@ -6,6 +6,10 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+console.log("PROJECT_ID:", process.env.PROJECT_ID);
+console.log("CLIENT_EMAIL:", process.env.CLIENT_EMAIL);
+console.log("PRIVATE_KEY exists:", !!process.env.PRIVATE_KEY);
+
 function env(name: string): string {
   const value = process.env[name];
 
