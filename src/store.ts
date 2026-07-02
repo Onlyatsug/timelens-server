@@ -182,6 +182,10 @@ export async function updatePost(id: string, dto: any): Promise<Post | undefined
   return updatedPost;
 }
 
+export async function getPostsByTag(tag: string): Promise<Post[]> {
+  return getPosts({ tag });
+}
+
 export async function deletePost(id: string): Promise<boolean> {
   if (!postsCache.has(id)) return false;
 
