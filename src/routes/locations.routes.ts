@@ -4,26 +4,26 @@ import * as store from '../store';
 const router = Router();
 
 // GET /api/locations
-router.get('/', (req, res) => {
-  res.json(store.getLocations());
+router.get('/',  async (req, res) => {
+  res.json(await store.getLocations());
 });
 
 // GET /api/locations/:id
-router.get('/:id', (req, res) => {
-  const location = store.getLocationById(req.params.id);
+router.get('/:id',  async (req, res) => {
+  const location = await store.getLocationById(req.params.id);
   if (!location) return res.status(404).json({ error: 'Local não encontrado' });
   res.json(location);
 });
 
 // GET /api/locations/:id/posts
-router.get('/:id/posts', (req, res) => {
-  const location = store.getLocationById(req.params.id);
+router.get('/:id/posts',  async  (req, res) => {
+  const location = await store.getLocationById(req.params.id);
   if (!location) return res.status(404).json({ error: 'Local não encontrado' });
-  res.json(store.getPostsByLocation(req.params.id));
+  res.json(await store.getPostsByLocation(req.params.id));
 });
 
 // POST /api/locations (Nova rota para criar local)
-router.post('/', (req, res) => {
+router.post('/',  async  (req, res) => {
   const { name, shortName, description, lat, lng, x, y, width, height } = req.body;
 
   // Validação básica
@@ -32,7 +32,7 @@ router.post('/', (req, res) => {
   }
 
   // Cria o novo local usando o store
-  const newLocation = store.createLocation({
+  const newLocation = await store.createLocation({
     name,
     shortName,
     description: description || '',

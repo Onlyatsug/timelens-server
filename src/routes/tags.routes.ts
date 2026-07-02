@@ -4,13 +4,13 @@ import * as store from '../store';
 const router = Router();
 
 // GET /api/tags
-router.get('/', (req, res) => {
-  res.json(store.getAllTags());
+router.get('/',  async (req, res) => {
+  res.json(await store.getAllTags());
 });
 
 // GET /api/tags/:tag/posts
-router.get('/:tag/posts', (req, res) => {
-  res.json(store.getPostsByTag(`#${req.params.tag.replace(/^#/, '')}`));
+router.get('/:tag/posts', async  (req, res) => {
+  res.json(await store.getPostsByTag(`#${req.params.tag.replace(/^#/, '')}`));
 });
 
 export default router;

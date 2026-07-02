@@ -1,19 +1,51 @@
 import { Router } from 'express';
 import * as store from '../store';
-import { LoginDTO } from '../types';
+import { firebaseAuth } from '../firebaseAdmin';
 
 const router = Router();
 
-// POST /api/auth/login  { email }
-// OBS: autenticação simplificada por e-mail, sem senha — adequada para o
-// estágio atual (mock) do projeto. Trocar por JWT + hash de senha antes
-// de qualquer uso em produção.
-router.post('/login', (req, res) => {
-  const { email }: LoginDTO = req.body;
-  if (!email) return res.status(400).json({ error: 'email é obrigatório' });
+const ALLOWED_DOMAINS = ['sou.ufmt.br'];
 
-  const user = store.getUserByEmail(email);
-  if (!user) return res.status(401).json({ error: 'Usuário não encontrado' });
+function isAllowedEmail(email?: string | null): boolean {
+  if (!email) return false;
+  const domain = email.split('@')[1]?.toLowerCase();
+  return ALLOWED_DOMAINS.includes(domain);
+}
+
+// POST /api/auth/sync  { idToken, name? }
+// Verifica o ID token emitido pelo Firebase Auth (login por e-mail/senha
+// ou Google) e sincroniza o usuário com o banco local: se já existe,
+// retorna o perfil existente; se é o primeiro acesso, cria um perfil novo.
+// O backend nunca vê senha — só o token assinado pelo Firebase.
+router.post('/sync', async (req, res) => {
+  const { idToken, name } = req.body as { idToken?: string; name?: string };
+  if (!idToken) return res.status(400).json({ error: 'idToken é obrigatório' });
+
+  let decoded;
+  try {
+    decoded = await firebaseAuth.verifyIdToken(idToken);
+  } catch {
+    return res.status(401).json({ error: 'Token inválido ou expirado' });
+  }
+
+  if (!isAllowedEmail(decoded.email)) {
+    return res.status(403).json({ error: 'Use um e-mail institucional (@sou.ufmt.br)' });
+  }
+
+  let user = await store.getUserByEmail(decoded.email!);
+
+  if (!user) {
+    user = await store.createUser({
+      id: decoded.uid,
+      name: name || decoded.name || decoded.email!.split('@')[0],
+      email: decoded.email!,
+      avatar: decoded.picture || '',
+      course: 'Ciência da Computação',
+      bio: 'Biografia própia é coisa do passado, deixe o sistema cozinhar!',
+      role: 'user',
+      joinDate: new Date().toISOString(),
+    });
+  }
 
   res.json(user);
 });

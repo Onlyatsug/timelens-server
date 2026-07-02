@@ -1,62 +1,114 @@
+// src/store.ts
+import { db } from './firebaseAdmin';
 import { v4 as uuid } from 'uuid';
-import { USERS, LOCATIONS, POSTS, COMMENTS, NOTIFICATIONS, ALL_TAGS } from './data/seed';
-import {
-  User,
-  CampusLocation,
-  Post,
-  Comment,
-  Notification,
-  CreatePostDTO,
-  UpdatePostDTO,
-  CreateCommentDTO,
-} from './types';
+import { User, CampusLocation, Post, Comment, Notification } from './types';
 
-// Estado em memória (reinicia toda vez que o servidor sobe).
-// Para persistência real, troque estes arrays por chamadas a um banco de dados.
-const db = {
-  users: [...USERS],
-  locations: [...LOCATIONS],
-  posts: [...POSTS],
-  comments: [...COMMENTS],
-  notifications: [...NOTIFICATIONS],
-  tags: new Set(ALL_TAGS),
-};
+// ⚡ CACHE EM MEMÓRIA (Consome poucos MBs e evita leituras repetidas)
+let usersCache: Map<string, User> = new Map();
+let locationsCache: Map<string, CampusLocation> = new Map();
+let postsCache: Map<string, Post> = new Map();
+let commentsCache: Map<string, Comment> = new Map();
+let notificationsCache: Map<string, Notification> = new Map();
+let tagsCache: Set<string> = new Set();
 
-// ---------- Usuários ----------
-export function getUsers(): User[] {
-  return db.users;
+// 🔥 FUNÇÃO DE INICIALIZAÇÃO (Roda apenas quando o servidor liga)
+export async function initializeServerCache() {
+  console.log('⚡ [Cache] Iniciando pré-carregamento de dados do Firestore...');
+  try {
+    const [usersSnap, locationsSnap, postsSnap, commentsSnap, notificationsSnap, tagsSnap] = await Promise.all([
+      db.collection('users').get(),
+      db.collection('locations').get(),
+      db.collection('posts').get(),
+      db.collection('comments').get(),
+      db.collection('notifications').get(),
+      db.collection('metadata').doc('tags').get()
+    ]);
+
+    usersSnap.docs.forEach(d => usersCache.set(d.id, d.data() as User));
+    locationsSnap.docs.forEach(d => locationsCache.set(d.id, d.data() as CampusLocation));
+    postsSnap.docs.forEach(d => postsCache.set(d.id, d.data() as Post));
+    commentsSnap.docs.forEach(d => commentsCache.set(d.id, d.data() as Comment));
+    notificationsSnap.docs.forEach(d => notificationsCache.set(d.id, d.data() as Notification));
+    
+    if (tagsSnap.exists) {
+      (tagsSnap.data()?.all || []).forEach((t: string) => tagsCache.add(t));
+    }
+
+    console.log(`✅ [Cache] Pré-carregamento concluído com sucesso!`);
+    console.log(`📊 Status: ${usersCache.size} Users | ${postsCache.size} Posts | ${locationsCache.size} Locations`);
+  } catch (error) {
+    console.error('❌ [Cache] Erro ao pré-carregar dados:', error);
+  }
 }
 
-export function getUserById(id: string): User | undefined {
-  return db.users.find((u) => u.id === id);
+// ---------- Usuários (Otimizados) ----------
+export async function getUsers(): Promise<User[]> {
+  return Array.from(usersCache.values());
 }
 
-export function getUserByEmail(email: string): User | undefined {
-  return db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+export async function getUserById(id: string): Promise<User | undefined> {
+  return usersCache.get(id);
 }
 
-// ---------- Locais ----------
-export function getLocations(): CampusLocation[] {
-  return db.locations;
+export async function getUserByEmail(email: string): Promise<User | undefined> {
+  return Array.from(usersCache.values()).find(u => u.email.toLowerCase() === email.toLowerCase());
 }
 
-export function getLocationById(id: string): CampusLocation | undefined {
-  return db.locations.find((l) => l.id === id);
+export async function createUser(data: Omit<User, 'id'> & { id?: string }): Promise<User> {
+  const id = data.id ?? uuid();
+  const newUser: User = { ...data, id };
+  
+  await db.collection('users').doc(id).set(newUser); // Salva no Firebase
+  usersCache.set(id, newUser); // Atualiza o cache imediatamente
+  return newUser;
 }
 
-export function createLocation(data: Omit<CampusLocation, 'id'>): CampusLocation {
+export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>): Promise<User | undefined> {
+  const currentUser = usersCache.get(id);
+  if (!currentUser) return undefined;
+
+  const updatedUser = { ...currentUser, ...data };
+  await db.collection('users').doc(id).update(data); // Firebase
+  usersCache.set(id, updatedUser); // Cache
+  return updatedUser;
+}
+
+// ---------- Locais (Otimizados) ----------
+export async function createLocation(dto: any): Promise<CampusLocation> {
+  const id = uuid(); // Gera um ID único para o novo local do campus
+  
   const newLocation: CampusLocation = {
-    ...data,
-    id: `loc${Date.now()}` // Gera um ID único baseado no timestamp
+    id,
+    name: dto.name,
+    shortName: dto.shortName,
+    description: dto.description ?? 'Local adicionado pela comunidade',
+    lat: dto.lat,
+    lng: dto.lng,
+    x: dto.x ?? 100,
+    y: dto.y ?? 100,
+    width: dto.width ?? 50,
+    height: dto.height ?? 50
   };
+
+  // 1. Salva de forma permanente no Firestore
+  await db.collection('locations').doc(id).set(newLocation);
   
-  // CORREÇÃO AQUI: Salvar no db.locations em vez de LOCATIONS
-  db.locations.push(newLocation); 
-  
+  // 2. Atualiza o cache do servidor instantaneamente (0 leituras adicionais)
+  locationsCache.set(id, newLocation);
+
+  console.log(`📍 [Cache] Novo local criado e mapeado: ${newLocation.shortName}`);
   return newLocation;
 }
 
-// ---------- Posts ----------
+export async function getLocations(): Promise<CampusLocation[]> {
+  return Array.from(locationsCache.values());
+}
+
+export async function getLocationById(id: string): Promise<CampusLocation | undefined> {
+  return locationsCache.get(id);
+}
+
+// ---------- Posts / Memórias (Otimizados) ----------
 export interface PostFilters {
   tag?: string;
   locationId?: string;
@@ -64,49 +116,38 @@ export interface PostFilters {
   type?: string;
   search?: string;
 }
+export async function getPostById(id: string): Promise<Post | undefined> {
+  return postsCache.get(id);
+}
 
-export function getPosts(filters: PostFilters = {}): Post[] {
-  let result = [...db.posts];
+// Seu método de getPosts antigo/atualizado para o cache
+export async function getPosts(filters: PostFilters = {}): Promise<Post[]> {
+  let results = Array.from(postsCache.values());
 
   if (filters.tag) {
-    result = result.filter((p) => p.tags.includes(filters.tag!));
+    results = results.filter(p => p.tags.includes(filters.tag!));
   }
   if (filters.locationId) {
-    result = result.filter((p) => p.locationId === filters.locationId);
+    results = results.filter(p => p.locationId === filters.locationId);
   }
   if (filters.authorId) {
-    result = result.filter((p) => p.authorId === filters.authorId);
+    results = results.filter(p => p.authorId === filters.authorId);
   }
   if (filters.type) {
-    result = result.filter((p) => p.type === filters.type);
+    results = results.filter(p => p.type === filters.type);
   }
   if (filters.search) {
     const q = filters.search.toLowerCase();
-    result = result.filter(
-      (p) => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q)
-    );
+    results = results.filter(p => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q));
   }
 
-  return result.sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  return results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-export function getPostById(id: string): Post | undefined {
-  return db.posts.find((p) => p.id === id);
-}
-
-export function getPostsByLocation(locationId: string): Post[] {
-  return db.posts.filter((p) => p.locationId === locationId);
-}
-
-export function getPostsByTag(tag: string): Post[] {
-  return db.posts.filter((p) => p.tags.includes(tag));
-}
-
-export function createPost(dto: CreatePostDTO): Post {
+export async function createPost(dto: any): Promise<Post> {
+  const id = uuid();
   const post: Post = {
-    id: uuid(),
+    id,
     title: dto.title,
     content: dto.content,
     image: dto.image ?? '',
@@ -119,79 +160,101 @@ export function createPost(dto: CreatePostDTO): Post {
     likedBy: [],
     type: dto.type,
   };
-  db.posts.unshift(post);
-  post.tags.forEach((t) => db.tags.add(t));
-  return post;
-}
 
-export function updatePost(id: string, dto: UpdatePostDTO): Post | undefined {
-  const post = getPostById(id);
-  if (!post) return undefined;
+  await db.collection('posts').doc(id).set(post); // Firebase
+  postsCache.set(id, post); // Cache
 
-  Object.assign(post, dto);
-  if (dto.tags) {
-    dto.tags.forEach((t) => db.tags.add(t));
+  if (post.tags.length > 0) {
+    post.tags.forEach(t => tagsCache.add(t));
+    await db.collection('metadata').doc('tags').set({ all: Array.from(tagsCache) });
   }
+
   return post;
 }
 
-export function deletePost(id: string): boolean {
-  const index = db.posts.findIndex((p) => p.id === id);
-  if (index === -1) return false;
-  db.posts.splice(index, 1);
-  // remove comentários órfãos
-  db.comments = db.comments.filter((c) => c.postId !== id);
+export async function updatePost(id: string, dto: any): Promise<Post | undefined> {
+  const currentPost = postsCache.get(id);
+  if (!currentPost) return undefined;
+
+  const updatedPost = { ...currentPost, ...dto };
+  await db.collection('posts').doc(id).update(dto);
+  postsCache.set(id, updatedPost);
+  return updatedPost;
+}
+
+export async function deletePost(id: string): Promise<boolean> {
+  if (!postsCache.has(id)) return false;
+
+  await db.collection('posts').doc(id).delete();
+  postsCache.delete(id);
+
+  // Limpa comentários do post deletado
+  const commentsArray = Array.from(commentsCache.values()).filter(c => c.postId === id);
+  const batch = db.batch();
+  commentsArray.forEach(c => {
+    batch.delete(db.collection('comments').doc(c.id));
+    commentsCache.delete(c.id);
+  });
+  await batch.commit();
+
   return true;
 }
 
-export function toggleLike(postId: string, userId: string): Post | undefined {
-  const post = getPostById(postId);
+export async function toggleLike(postId: string, userId: string): Promise<Post | undefined> {
+  const post = postsCache.get(postId);
   if (!post) return undefined;
 
   const alreadyLiked = post.likedBy.includes(userId);
   if (alreadyLiked) {
-    post.likedBy = post.likedBy.filter((id) => id !== userId);
+    post.likedBy = post.likedBy.filter(id => id !== userId);
     post.likes = Math.max(0, post.likes - 1);
   } else {
     post.likedBy.push(userId);
     post.likes += 1;
-    // gera notificação de curtida para o autor do post (se não for o próprio usuário)
-    if (post.authorId !== userId) {
-      const liker = getUserById(userId);
-      createNotification({
-        userId: post.authorId,
-        type: 'like',
-        body: `${liker?.name ?? 'Alguém'} curtiu sua memória "${post.title}".`,
-        postId: post.id,
-      });
-    }
   }
+
+  await db.collection('posts').doc(postId).set(post);
+  postsCache.set(postId, post); // Atualiza a referência no cache
   return post;
 }
 
-// ---------- Comentários ----------
-export function getCommentsByPost(postId: string): Comment[] {
-  return db.comments
-    .filter((c) => c.postId === postId)
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+// --- Compatibilidade das rotas anteriores ---
+export async function getPostsByLocation(locationId: string): Promise<Post[]> {
+  return getPosts({ locationId });
 }
 
-export function createComment(postId: string, dto: CreateCommentDTO): Comment | undefined {
-  const post = getPostById(postId);
+export async function getPostsByUser(userId: string): Promise<Post[]> {
+  return getPosts({ authorId: userId });
+}
+
+// ---------- Comentários (Otimizados em Cache) ----------
+export async function getCommentsByPost(postId: string): Promise<Comment[]> {
+  const comments = Array.from(commentsCache.values()).filter(c => c.postId === postId);
+  return comments.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+}
+
+export async function createComment(postId: string, dto: any): Promise<Comment | undefined> {
+  const post = postsCache.get(postId);
   if (!post) return undefined;
 
+  const id = uuid();
   const comment: Comment = {
-    id: uuid(),
+    id,
     postId,
     authorId: dto.authorId,
     content: dto.content,
     createdAt: new Date().toISOString(),
   };
-  db.comments.push(comment);
 
+  
+
+  await db.collection('comments').doc(id).set(comment); // Firebase
+  commentsCache.set(id, comment); // Cache
+
+  // Dispara notificação se não for o próprio autor comentando
   if (post.authorId !== dto.authorId) {
-    const author = getUserById(dto.authorId);
-    createNotification({
+    const author = usersCache.get(dto.authorId);
+    await createNotification({
       userId: post.authorId,
       type: 'comment',
       body: `${author?.name ?? 'Alguém'} comentou: "${dto.content.slice(0, 60)}"`,
@@ -202,52 +265,92 @@ export function createComment(postId: string, dto: CreateCommentDTO): Comment | 
   return comment;
 }
 
-export function deleteComment(id: string): boolean {
-  const index = db.comments.findIndex((c) => c.id === id);
-  if (index === -1) return false;
-  db.comments.splice(index, 1);
+// Garanta que estes também estejam no arquivo caso o front peça dados específicos:
+
+export async function getCommentById(id: string): Promise<Comment | undefined> {
+  return commentsCache.get(id);
+}
+
+
+
+export async function deleteComment(id: string): Promise<boolean> {
+  if (!commentsCache.has(id)) return false;
+
+  await db.collection('comments').doc(id).delete();
+  commentsCache.delete(id);
   return true;
 }
 
-// ---------- Notificações ----------
-export function getNotificationsByUser(userId: string): Notification[] {
-  return db.notifications
-    .filter((n) => n.userId === userId)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+// ---------- Notificações (Otimizadas em Cache) ----------
+
+// 🔥 Essa é a função que a sua rota de notificações está sentindo falta!
+export async function getNotificationsByUser(userId: string): Promise<Notification[]> {
+  const notifications = Array.from(notificationsCache.values()).filter(n => n.userId === userId);
+  return notifications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-export function createNotification(
+// 🔥 Alias caso alguma rota antiga chame apenas por getNotifications
+export async function getNotifications(userId: string): Promise<Notification[]> {
+  return getNotificationsByUser(userId);
+}
+
+export async function getNotificationById(id: string): Promise<Notification | undefined> {
+  return notificationsCache.get(id);
+}
+
+export async function createNotification(
   data: Omit<Notification, 'id' | 'createdAt' | 'read'>
-): Notification {
+): Promise<Notification> {
+  const id = uuid();
   const notification: Notification = {
-    id: uuid(),
+    id,
     createdAt: new Date().toISOString(),
     read: false,
     ...data,
   };
-  db.notifications.unshift(notification);
+
+  await db.collection('notifications').doc(id).set(notification); // Firebase
+  notificationsCache.set(id, notification); // Cache
   return notification;
 }
 
-export function markNotificationRead(id: string): Notification | undefined {
-  const notification = db.notifications.find((n) => n.id === id);
+export async function markNotificationRead(id: string): Promise<Notification | undefined> {
+  const notification = notificationsCache.get(id);
   if (!notification) return undefined;
+
   notification.read = true;
+  await db.collection('notifications').doc(id).update({ read: true }); // Firebase
+  notificationsCache.set(id, notification); // Cache
   return notification;
 }
 
-export function markAllNotificationsRead(userId: string): number {
-  let count = 0;
-  db.notifications.forEach((n) => {
-    if (n.userId === userId && !n.read) {
-      n.read = true;
-      count += 1;
-    }
-  });
-  return count;
+// Alias caso a rota use o padrão snake-case ou camelCase diferente
+export async function markNotificationAsRead(id: string): Promise<Notification | undefined> {
+  return markNotificationRead(id);
 }
 
-// ---------- Tags ----------
-export function getAllTags(): string[] {
-  return Array.from(db.tags).sort();
+export async function markAllNotificationsRead(userId: string): Promise<number> {
+  const userNotifications = Array.from(notificationsCache.values())
+    .filter(n => n.userId === userId && !n.read);
+
+  const batch = db.batch();
+  userNotifications.forEach(n => {
+    n.read = true;
+    batch.update(db.collection('notifications').doc(n.id), { read: true });
+    notificationsCache.set(n.id, n); // Atualiza cache individualmente
+  });
+  
+  await batch.commit();
+  return userNotifications.length;
+}
+
+// Alias para bater com a chamada antiga
+export async function markAllNotificationsAsRead(userId: string): Promise<number> {
+  return markAllNotificationsRead(userId);
+}
+
+export async function getAllTags(): Promise<string[]> {
+  // Converte o Set de tags em um array e ordena em ordem alfabética
+  return Array.from(tagsCache).sort();
 }
