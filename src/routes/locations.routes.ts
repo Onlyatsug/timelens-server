@@ -22,4 +22,29 @@ router.get('/:id/posts', (req, res) => {
   res.json(store.getPostsByLocation(req.params.id));
 });
 
+// POST /api/locations (Nova rota para criar local)
+router.post('/', (req, res) => {
+  const { name, shortName, description, lat, lng, x, y, width, height } = req.body;
+
+  // Validação básica
+  if (!name || !shortName || !lat || !lng) {
+    return res.status(400).json({ error: 'Campos name, shortName, lat e lng são obrigatórios.' });
+  }
+
+  // Cria o novo local usando o store
+  const newLocation = store.createLocation({
+    name,
+    shortName,
+    description: description || '',
+    lat,
+    lng,
+    x: x || 0,
+    y: y || 0,
+    width: width || 50,
+    height: height || 50
+  });
+
+  res.status(201).json(newLocation);
+});
+
 export default router;

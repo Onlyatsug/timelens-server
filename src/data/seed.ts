@@ -44,12 +44,12 @@ export const USERS: User[] = [
 ];
 
 export const LOCATIONS: CampusLocation[] = [
-  { id: 'loc1', name: 'Bloco IE — Engenharia', shortName: 'Bloco IE', description: 'Instituto de Engenharia e cursos de Computação', x: 80, y: 60, width: 140, height: 90, lat: -15.6028, lng: -56.0881 },
-  { id: 'loc2', name: 'Biblioteca Central', shortName: 'Biblioteca', description: 'Acervo literário e de pesquisa do campus', x: 260, y: 80, width: 110, height: 70, lat: -15.6038, lng: -56.0868 },
-  { id: 'loc3', name: 'Praça Central', shortName: 'Praça', description: 'Coração do campus — ponto de encontro histórico', x: 190, y: 195, width: 100, height: 80, lat: -15.6035, lng: -56.0875 },
-  { id: 'loc4', name: 'Auditório Adamastor', shortName: 'Auditório', description: 'Palco de eventos culturais e científicos', x: 65, y: 190, width: 100, height: 70, lat: -15.6031, lng: -56.0886 },
-  { id: 'loc5', name: 'Lab. de Informática', shortName: 'Lab. Info', description: 'Laboratórios de pesquisa em computação', x: 385, y: 185, width: 105, height: 70, lat: -15.6047, lng: -56.0867 },
-  { id: 'loc6', name: 'Centro Acadêmico CC', shortName: 'CA Comp.', description: 'Sede do Centro Acadêmico de Computação', x: 280, y: 195, width: 90, height: 65, lat: -15.6043, lng: -56.0877 },
+  { id: 'loc1', name: 'Bloco IC — Computação', shortName: 'Bloco IC', description: 'Instituto de Computação', x: 80, y: 60, width: 140, height: 90, lat: -15.60834, lng: -56.06289 },
+  { id: 'loc2', name: 'Biblioteca Central', shortName: 'Biblioteca', description: 'Acervo literário e de pesquisa do campus', x: 260, y: 80, width: 110, height: 70, lat: -15.61059, lng: -56.06287 },
+  { id: 'loc3', name: 'Praça Central', shortName: 'Praça', description: 'Coração do campus — ponto de encontro histórico', x: 190, y: 195, width: 100, height: 80, lat: -15.60883, lng: -56.06560 },
+  { id: 'loc4', name: 'Teatro Universitário', shortName: 'Teatro', description: 'Palco de eventos culturais e científicos', x: 65, y: 190, width: 100, height: 70, lat: -15.60993, lng: -56.06326 }, 
+  { id: 'loc5', name: 'Centro de Biodiversidade', shortName: 'Centro de Bio', description: 'Laboratórios de pesquisa em biodiversidade', x: 385, y: 185, width: 105, height: 70, lat: -15.60802, lng: -56.06251 }, 
+  { id: 'loc6', name: 'Centro Acadêmico CC', shortName: 'CA Comp.', description: 'Sede do Centro Acadêmico de Computação', x: 280, y: 195, width: 90, height: 65, lat: -15.60824, lng: -56.06276 }, 
 ];
 
 export const POSTS: Post[] = [

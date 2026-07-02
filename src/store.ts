@@ -44,6 +44,18 @@ export function getLocationById(id: string): CampusLocation | undefined {
   return db.locations.find((l) => l.id === id);
 }
 
+export function createLocation(data: Omit<CampusLocation, 'id'>): CampusLocation {
+  const newLocation: CampusLocation = {
+    ...data,
+    id: `loc${Date.now()}` // Gera um ID único baseado no timestamp
+  };
+  
+  // CORREÇÃO AQUI: Salvar no db.locations em vez de LOCATIONS
+  db.locations.push(newLocation); 
+  
+  return newLocation;
+}
+
 // ---------- Posts ----------
 export interface PostFilters {
   tag?: string;
