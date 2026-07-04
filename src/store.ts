@@ -44,11 +44,6 @@ async function initializeServerCache() {
   }
 }
 
-// 🧠 Em ambiente serverless (Vercel) não existe um "boot" único do processo:
-// cada invocação pode cair numa instância nova (cold start) ou reaproveitar
-// uma instância já quente. O app.listen() do server.ts NUNCA roda na Vercel,
-// então o cache não pode depender dele. Por isso ele é inicializado de forma
-// preguiçosa (lazy) e memorizada na primeira requisição que precisar dele.
 let cacheReadyPromise: Promise<void> | null = null;
 
 export function ensureCacheReady(): Promise<void> {
