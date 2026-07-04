@@ -3,92 +3,59 @@ import { db } from './firebaseAdmin';
 import { v4 as uuid } from 'uuid';
 import { User, CampusLocation, Post, Comment, Notification } from './types';
 
-// ⚡ CACHE EM MEMÓRIA (Consome poucos MBs e evita leituras repetidas)
-let usersCache: Map<string, User> = new Map();
-let locationsCache: Map<string, CampusLocation> = new Map();
-let postsCache: Map<string, Post> = new Map();
-let commentsCache: Map<string, Comment> = new Map();
-let notificationsCache: Map<string, Notification> = new Map();
-let tagsCache: Set<string> = new Set();
+// Sem cache em memória: cada função lê/escreve direto no Firestore.
+// (Cache será reintroduzido futuramente via Redis.)
 
-// 🔥 FUNÇÃO DE INICIALIZAÇÃO (Roda apenas quando o servidor liga)
-async function initializeServerCache() {
-  console.log('⚡ [Cache] Iniciando pré-carregamento de dados do Firestore...');
-  try {
-    const [usersSnap, locationsSnap, postsSnap, commentsSnap, notificationsSnap, tagsSnap] = await Promise.all([
-      db.collection('users').get(),
-      db.collection('locations').get(),
-      db.collection('posts').get(),
-      db.collection('comments').get(),
-      db.collection('notifications').get(),
-      db.collection('metadata').doc('tags').get()
-    ]);
-
-    usersSnap.docs.forEach(d => usersCache.set(d.id, d.data() as User));
-    locationsSnap.docs.forEach(d => locationsCache.set(d.id, d.data() as CampusLocation));
-    postsSnap.docs.forEach(d => postsCache.set(d.id, d.data() as Post));
-    commentsSnap.docs.forEach(d => commentsCache.set(d.id, d.data() as Comment));
-    notificationsSnap.docs.forEach(d => notificationsCache.set(d.id, d.data() as Notification));
-    
-    if (tagsSnap.exists) {
-      (tagsSnap.data()?.all || []).forEach((t: string) => tagsCache.add(t));
-    }
-
-    console.log(`✅ [Cache] Pré-carregamento concluído com sucesso!`);
-    console.log(`📊 Status: ${usersCache.size} Users | ${postsCache.size} Posts | ${locationsCache.size} Locations`);
-  } catch (error) {
-    console.error('❌ [Cache] Erro ao pré-carregar dados:', error);
-    // Não guarda a promise "resolvida com erro" — deixa a próxima chamada tentar de novo
-    cacheReadyPromise = null;
-    throw error;
-  }
-}
-
-let cacheReadyPromise: Promise<void> | null = null;
-
-export function ensureCacheReady(): Promise<void> {
-  if (!cacheReadyPromise) {
-    cacheReadyPromise = initializeServerCache();
-  }
-  return cacheReadyPromise;
-}
-
-// ---------- Usuários (Otimizados) ----------
+// ---------- Usuários ----------
 export async function getUsers(): Promise<User[]> {
-  return Array.from(usersCache.values());
+  const snap = await db.collection('users').get();
+  return snap.docs.map(d => d.data() as User);
 }
 
 export async function getUserById(id: string): Promise<User | undefined> {
-  return usersCache.get(id);
+  const doc = await db.collection('users').doc(id).get();
+  return doc.exists ? (doc.data() as User) : undefined;
 }
 
 export async function getUserByEmail(email: string): Promise<User | undefined> {
-  return Array.from(usersCache.values()).find(u => u.email.toLowerCase() === email.toLowerCase());
+  const snap = await db.collection('users')
+    .where('email', '==', email.toLowerCase())
+    .limit(1)
+    .get();
+
+  if (!snap.empty) {
+    return snap.docs[0].data() as User;
+  }
+
+  // Fallback: caso o e-mail salvo não esteja normalizado em minúsculas
+  const allSnap = await db.collection('users').get();
+  const found = allSnap.docs.find(d => (d.data() as User).email.toLowerCase() === email.toLowerCase());
+  return found ? (found.data() as User) : undefined;
 }
 
 export async function createUser(data: Omit<User, 'id'> & { id?: string }): Promise<User> {
   const id = data.id ?? uuid();
   const newUser: User = { ...data, id };
-  
-  await db.collection('users').doc(id).set(newUser); // Salva no Firebase
-  usersCache.set(id, newUser); // Atualiza o cache imediatamente
+
+  await db.collection('users').doc(id).set(newUser);
   return newUser;
 }
 
 export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>): Promise<User | undefined> {
-  const currentUser = usersCache.get(id);
-  if (!currentUser) return undefined;
+  const ref = db.collection('users').doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) return undefined;
 
+  const currentUser = doc.data() as User;
   const updatedUser = { ...currentUser, ...data };
-  await db.collection('users').doc(id).update(data); // Firebase
-  usersCache.set(id, updatedUser); // Cache
+  await ref.update(data);
   return updatedUser;
 }
 
-// ---------- Locais (Otimizados) ----------
+// ---------- Locais ----------
 export async function createLocation(dto: any): Promise<CampusLocation> {
-  const id = uuid(); // Gera um ID único para o novo local do campus
-  
+  const id = uuid();
+
   const newLocation: CampusLocation = {
     id,
     name: dto.name,
@@ -102,25 +69,23 @@ export async function createLocation(dto: any): Promise<CampusLocation> {
     height: dto.height ?? 50
   };
 
-  // 1. Salva de forma permanente no Firestore
   await db.collection('locations').doc(id).set(newLocation);
-  
-  // 2. Atualiza o cache do servidor instantaneamente (0 leituras adicionais)
-  locationsCache.set(id, newLocation);
 
-  console.log(`📍 [Cache] Novo local criado e mapeado: ${newLocation.shortName}`);
+  console.log(`📍 Novo local criado: ${newLocation.shortName}`);
   return newLocation;
 }
 
 export async function getLocations(): Promise<CampusLocation[]> {
-  return Array.from(locationsCache.values());
+  const snap = await db.collection('locations').get();
+  return snap.docs.map(d => d.data() as CampusLocation);
 }
 
 export async function getLocationById(id: string): Promise<CampusLocation | undefined> {
-  return locationsCache.get(id);
+  const doc = await db.collection('locations').doc(id).get();
+  return doc.exists ? (doc.data() as CampusLocation) : undefined;
 }
 
-// ---------- Posts / Memórias (Otimizados) ----------
+// ---------- Posts / Memórias ----------
 export interface PostFilters {
   tag?: string;
   locationId?: string;
@@ -128,13 +93,15 @@ export interface PostFilters {
   type?: string;
   search?: string;
 }
+
 export async function getPostById(id: string): Promise<Post | undefined> {
-  return postsCache.get(id);
+  const doc = await db.collection('posts').doc(id).get();
+  return doc.exists ? (doc.data() as Post) : undefined;
 }
 
-// Seu método de getPosts antigo/atualizado para o cache
 export async function getPosts(filters: PostFilters = {}): Promise<Post[]> {
-  let results = Array.from(postsCache.values());
+  const snap = await db.collection('posts').get();
+  let results = snap.docs.map(d => d.data() as Post);
 
   if (filters.tag) {
     results = results.filter(p => p.tags.includes(filters.tag!));
@@ -173,24 +140,27 @@ export async function createPost(dto: any): Promise<Post> {
     type: dto.type,
   };
 
-  await db.collection('posts').doc(id).set(post); // Firebase
-  postsCache.set(id, post); // Cache
+  await db.collection('posts').doc(id).set(post);
 
   if (post.tags.length > 0) {
-    post.tags.forEach(t => tagsCache.add(t));
-    await db.collection('metadata').doc('tags').set({ all: Array.from(tagsCache) });
+    const tagsRef = db.collection('metadata').doc('tags');
+    const tagsDoc = await tagsRef.get();
+    const existingTags: string[] = tagsDoc.exists ? (tagsDoc.data()?.all || []) : [];
+    const mergedTags = Array.from(new Set([...existingTags, ...post.tags]));
+    await tagsRef.set({ all: mergedTags });
   }
 
   return post;
 }
 
 export async function updatePost(id: string, dto: any): Promise<Post | undefined> {
-  const currentPost = postsCache.get(id);
-  if (!currentPost) return undefined;
+  const ref = db.collection('posts').doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) return undefined;
 
+  const currentPost = doc.data() as Post;
   const updatedPost = { ...currentPost, ...dto };
-  await db.collection('posts').doc(id).update(dto);
-  postsCache.set(id, updatedPost);
+  await ref.update(dto);
   return updatedPost;
 }
 
@@ -199,26 +169,29 @@ export async function getPostsByTag(tag: string): Promise<Post[]> {
 }
 
 export async function deletePost(id: string): Promise<boolean> {
-  if (!postsCache.has(id)) return false;
+  const ref = db.collection('posts').doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) return false;
 
-  await db.collection('posts').doc(id).delete();
-  postsCache.delete(id);
+  await ref.delete();
 
   // Limpa comentários do post deletado
-  const commentsArray = Array.from(commentsCache.values()).filter(c => c.postId === id);
-  const batch = db.batch();
-  commentsArray.forEach(c => {
-    batch.delete(db.collection('comments').doc(c.id));
-    commentsCache.delete(c.id);
-  });
-  await batch.commit();
+  const commentsSnap = await db.collection('comments').where('postId', '==', id).get();
+  if (!commentsSnap.empty) {
+    const batch = db.batch();
+    commentsSnap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
 
   return true;
 }
 
 export async function toggleLike(postId: string, userId: string): Promise<Post | undefined> {
-  const post = postsCache.get(postId);
-  if (!post) return undefined;
+  const ref = db.collection('posts').doc(postId);
+  const doc = await ref.get();
+  if (!doc.exists) return undefined;
+
+  const post = doc.data() as Post;
 
   const alreadyLiked = post.likedBy.includes(userId);
   if (alreadyLiked) {
@@ -229,8 +202,7 @@ export async function toggleLike(postId: string, userId: string): Promise<Post |
     post.likes += 1;
   }
 
-  await db.collection('posts').doc(postId).set(post);
-  postsCache.set(postId, post); // Atualiza a referência no cache
+  await ref.set(post);
   return post;
 }
 
@@ -243,15 +215,19 @@ export async function getPostsByUser(userId: string): Promise<Post[]> {
   return getPosts({ authorId: userId });
 }
 
-// ---------- Comentários (Otimizados em Cache) ----------
+// ---------- Comentários ----------
 export async function getCommentsByPost(postId: string): Promise<Comment[]> {
-  const comments = Array.from(commentsCache.values()).filter(c => c.postId === postId);
+  const snap = await db.collection('comments').where('postId', '==', postId).get();
+  const comments = snap.docs.map(d => d.data() as Comment);
   return comments.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 }
 
 export async function createComment(postId: string, dto: any): Promise<Comment | undefined> {
-  const post = postsCache.get(postId);
-  if (!post) return undefined;
+  const postRef = db.collection('posts').doc(postId);
+  const postDoc = await postRef.get();
+  if (!postDoc.exists) return undefined;
+
+  const post = postDoc.data() as Post;
 
   const id = uuid();
   const comment: Comment = {
@@ -262,14 +238,11 @@ export async function createComment(postId: string, dto: any): Promise<Comment |
     createdAt: new Date().toISOString(),
   };
 
-  
-
-  await db.collection('comments').doc(id).set(comment); // Firebase
-  commentsCache.set(id, comment); // Cache
+  await db.collection('comments').doc(id).set(comment);
 
   // Dispara notificação se não for o próprio autor comentando
   if (post.authorId !== dto.authorId) {
-    const author = usersCache.get(dto.authorId);
+    const author = await getUserById(dto.authorId);
     await createNotification({
       userId: post.authorId,
       type: 'comment',
@@ -281,38 +254,35 @@ export async function createComment(postId: string, dto: any): Promise<Comment |
   return comment;
 }
 
-// Garanta que estes também estejam no arquivo caso o front peça dados específicos:
-
 export async function getCommentById(id: string): Promise<Comment | undefined> {
-  return commentsCache.get(id);
+  const doc = await db.collection('comments').doc(id).get();
+  return doc.exists ? (doc.data() as Comment) : undefined;
 }
 
-
-
 export async function deleteComment(id: string): Promise<boolean> {
-  if (!commentsCache.has(id)) return false;
+  const ref = db.collection('comments').doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) return false;
 
-  await db.collection('comments').doc(id).delete();
-  commentsCache.delete(id);
+  await ref.delete();
   return true;
 }
 
-
-// ---------- Notificações (Otimizadas em Cache) ----------
-
-// 🔥 Essa é a função que a sua rota de notificações está sentindo falta!
+// ---------- Notificações ----------
 export async function getNotificationsByUser(userId: string): Promise<Notification[]> {
-  const notifications = Array.from(notificationsCache.values()).filter(n => n.userId === userId);
+  const snap = await db.collection('notifications').where('userId', '==', userId).get();
+  const notifications = snap.docs.map(d => d.data() as Notification);
   return notifications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-// 🔥 Alias caso alguma rota antiga chame apenas por getNotifications
+// Alias caso alguma rota antiga chame apenas por getNotifications
 export async function getNotifications(userId: string): Promise<Notification[]> {
   return getNotificationsByUser(userId);
 }
 
 export async function getNotificationById(id: string): Promise<Notification | undefined> {
-  return notificationsCache.get(id);
+  const doc = await db.collection('notifications').doc(id).get();
+  return doc.exists ? (doc.data() as Notification) : undefined;
 }
 
 export async function createNotification(
@@ -326,18 +296,17 @@ export async function createNotification(
     ...data,
   };
 
-  await db.collection('notifications').doc(id).set(notification); // Firebase
-  notificationsCache.set(id, notification); // Cache
+  await db.collection('notifications').doc(id).set(notification);
   return notification;
 }
 
 export async function markNotificationRead(id: string): Promise<Notification | undefined> {
-  const notification = notificationsCache.get(id);
-  if (!notification) return undefined;
+  const ref = db.collection('notifications').doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) return undefined;
 
-  notification.read = true;
-  await db.collection('notifications').doc(id).update({ read: true }); // Firebase
-  notificationsCache.set(id, notification); // Cache
+  const notification = { ...(doc.data() as Notification), read: true };
+  await ref.update({ read: true });
   return notification;
 }
 
@@ -347,18 +316,18 @@ export async function markNotificationAsRead(id: string): Promise<Notification |
 }
 
 export async function markAllNotificationsRead(userId: string): Promise<number> {
-  const userNotifications = Array.from(notificationsCache.values())
-    .filter(n => n.userId === userId && !n.read);
+  const snap = await db.collection('notifications')
+    .where('userId', '==', userId)
+    .where('read', '==', false)
+    .get();
+
+  if (snap.empty) return 0;
 
   const batch = db.batch();
-  userNotifications.forEach(n => {
-    n.read = true;
-    batch.update(db.collection('notifications').doc(n.id), { read: true });
-    notificationsCache.set(n.id, n); // Atualiza cache individualmente
-  });
-  
+  snap.docs.forEach(d => batch.update(d.ref, { read: true }));
   await batch.commit();
-  return userNotifications.length;
+
+  return snap.size;
 }
 
 // Alias para bater com a chamada antiga
@@ -367,6 +336,7 @@ export async function markAllNotificationsAsRead(userId: string): Promise<number
 }
 
 export async function getAllTags(): Promise<string[]> {
-  // Converte o Set de tags em um array e ordena em ordem alfabética
-  return Array.from(tagsCache).sort();
+  const doc = await db.collection('metadata').doc('tags').get();
+  const tags: string[] = doc.exists ? (doc.data()?.all || []) : [];
+  return Array.from(new Set(tags)).sort();
 }

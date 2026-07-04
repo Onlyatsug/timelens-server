@@ -9,7 +9,6 @@ import notificationsRoutes from './routes/notifications.routes';
 import tagsRoutes from './routes/tags.routes';
 import authRoutes from './routes/auth.routes';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler';
-import { ensureCacheReady } from './store';
 import dotenv from 'dotenv';
 
 const app = express();
@@ -25,15 +24,6 @@ app.use(express.urlencoded({ limit: '14mb', extended: true }));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'timelens-backend' });
-});
-
-app.use('/api', async (req, res, next) => {
-  try {
-    await ensureCacheReady();
-    next();
-  } catch (error) {
-    next(error);
-  }
 });
 
 app.use('/api/users', usersRoutes);
