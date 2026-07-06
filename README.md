@@ -2,7 +2,7 @@
 
 O **Timelens** é uma plataforma web dedicada à preservação de memórias institucionais, comunitárias e coletivas, usando localização geográfica e cronologia como pilares de navegação: cada memória é um post ancorado a um local do campus e a uma linha do tempo.
 
-Este repositório contém a API REST que sustenta o [frontend do Timelens](../timelens-website), desenvolvida integralmente no escopo da disciplina de **Tópicos Especiais em Engenharia de Software**, sob o tema norteador *"Rede Social para Minorias"*.
+Este repositório contém a API REST que sustenta o [frontend do Timelens](https://github.com/Onlyatsug/timelens-website), desenvolvida integralmente no escopo da disciplina de **Tópicos Especiais em Engenharia de Software**, sob o tema norteador *"Rede Social para Minorias"*.
 
 > O projeto foi construído em **XP** por conta do prazo curto da disciplina. A ideia é continuar evoluindo o backend de forma constante — consolidando tópicos de *system design*, boas práticas e *clean code* — em vez de tratá-lo como entrega finalizada.
 
