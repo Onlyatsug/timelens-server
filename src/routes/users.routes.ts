@@ -11,7 +11,7 @@ router.get('/',  async (req, res) => {
 // GET /api/users/:id
  router.get('/:id',  async (req, res) =>  {
   const user = await store.getUserById(req.params.id);
-  if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+  if (!user) return res.status(404).json({ error: 'Usuário não encontrado!' });
   res.json(user);
 });
 

@@ -61,8 +61,6 @@ export interface Notification {
   read: boolean;
 }
 
-// ---- DTOs de entrada (payloads que a API aceita) ----
-
 export interface CreatePostDTO {
   title: string;
   content: string;

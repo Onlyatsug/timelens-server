@@ -11,14 +11,14 @@ router.get('/',  async (req, res) => {
 // GET /api/locations/:id
 router.get('/:id',  async (req, res) => {
   const location = await store.getLocationById(req.params.id);
-  if (!location) return res.status(404).json({ error: 'Local não encontrado' });
+  if (!location) return res.status(404).json({ error: 'Local não encontrado!' });
   res.json(location);
 });
 
 // GET /api/locations/:id/posts
 router.get('/:id/posts',  async  (req, res) => {
   const location = await store.getLocationById(req.params.id);
-  if (!location) return res.status(404).json({ error: 'Local não encontrado' });
+  if (!location) return res.status(404).json({ error: 'Local não encontrado!' });
   res.json(await store.getPostsByLocation(req.params.id));
 });
 
@@ -26,12 +26,12 @@ router.get('/:id/posts',  async  (req, res) => {
 router.post('/',  async  (req, res) => {
   const { name, shortName, description, lat, lng, x, y, width, height } = req.body;
 
-  // Validação básica
+  // to-do: validar com zod
   if (!name || !shortName || !lat || !lng) {
-    return res.status(400).json({ error: 'Campos name, shortName, lat e lng são obrigatórios.' });
+    return res.status(400).json({ error: 'Campos name, shortName, lat e lng são obrigatórios!' });
   }
 
-  // Cria o novo local usando o store
+  // cria o novo local usando o store
   const newLocation = await store.createLocation({
     name,
     shortName,

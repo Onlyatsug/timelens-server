@@ -3,10 +3,9 @@ import { db } from './firebaseAdmin';
 import { v4 as uuid } from 'uuid';
 import { User, CampusLocation, Post, Comment, Notification } from './types';
 
-// Sem cache em memória: cada função lê/escreve direto no Firestore.
-// (Cache será reintroduzido futuramente via Redis.)
+//to-do: cache no redis (agregaria muito), separar tudo em controllers implementando MVC
 
-// ---------- Usuários ----------
+// users
 export async function getUsers(): Promise<User[]> {
   const snap = await db.collection('users').get();
   return snap.docs.map(d => d.data() as User);
@@ -27,7 +26,7 @@ export async function getUserByEmail(email: string): Promise<User | undefined> {
     return snap.docs[0].data() as User;
   }
 
-  // Fallback: caso o e-mail salvo não esteja normalizado em minúsculas
+  // fallback de email
   const allSnap = await db.collection('users').get();
   const found = allSnap.docs.find(d => (d.data() as User).email.toLowerCase() === email.toLowerCase());
   return found ? (found.data() as User) : undefined;
@@ -52,7 +51,7 @@ export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>): P
   return updatedUser;
 }
 
-// ---------- Locais ----------
+// locais
 export async function createLocation(dto: any): Promise<CampusLocation> {
   const id = uuid();
 
@@ -71,7 +70,6 @@ export async function createLocation(dto: any): Promise<CampusLocation> {
 
   await db.collection('locations').doc(id).set(newLocation);
 
-  console.log(`📍 Novo local criado: ${newLocation.shortName}`);
   return newLocation;
 }
 
@@ -85,7 +83,7 @@ export async function getLocationById(id: string): Promise<CampusLocation | unde
   return doc.exists ? (doc.data() as CampusLocation) : undefined;
 }
 
-// ---------- Posts / Memórias ----------
+// post / memórias
 export interface PostFilters {
   tag?: string;
   locationId?: string;
@@ -175,7 +173,7 @@ export async function deletePost(id: string): Promise<boolean> {
 
   await ref.delete();
 
-  // Limpa comentários do post deletado
+  // limpar comentários
   const commentsSnap = await db.collection('comments').where('postId', '==', id).get();
   if (!commentsSnap.empty) {
     const batch = db.batch();
@@ -206,7 +204,6 @@ export async function toggleLike(postId: string, userId: string): Promise<Post |
   return post;
 }
 
-// --- Compatibilidade das rotas anteriores ---
 export async function getPostsByLocation(locationId: string): Promise<Post[]> {
   return getPosts({ locationId });
 }
@@ -215,7 +212,7 @@ export async function getPostsByUser(userId: string): Promise<Post[]> {
   return getPosts({ authorId: userId });
 }
 
-// ---------- Comentários ----------
+// comentários
 export async function getCommentsByPost(postId: string): Promise<Comment[]> {
   const snap = await db.collection('comments').where('postId', '==', postId).get();
   const comments = snap.docs.map(d => d.data() as Comment);
@@ -240,7 +237,7 @@ export async function createComment(postId: string, dto: any): Promise<Comment |
 
   await db.collection('comments').doc(id).set(comment);
 
-  // Dispara notificação se não for o próprio autor comentando
+  // gatilho de notificação
   if (post.authorId !== dto.authorId) {
     const author = await getUserById(dto.authorId);
     await createNotification({
@@ -268,14 +265,13 @@ export async function deleteComment(id: string): Promise<boolean> {
   return true;
 }
 
-// ---------- Notificações ----------
+// notificações
 export async function getNotificationsByUser(userId: string): Promise<Notification[]> {
   const snap = await db.collection('notifications').where('userId', '==', userId).get();
   const notifications = snap.docs.map(d => d.data() as Notification);
   return notifications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-// Alias caso alguma rota antiga chame apenas por getNotifications
 export async function getNotifications(userId: string): Promise<Notification[]> {
   return getNotificationsByUser(userId);
 }
@@ -310,7 +306,6 @@ export async function markNotificationRead(id: string): Promise<Notification | u
   return notification;
 }
 
-// Alias caso a rota use o padrão snake-case ou camelCase diferente
 export async function markNotificationAsRead(id: string): Promise<Notification | undefined> {
   return markNotificationRead(id);
 }
@@ -330,7 +325,6 @@ export async function markAllNotificationsRead(userId: string): Promise<number> 
   return snap.size;
 }
 
-// Alias para bater com a chamada antiga
 export async function markAllNotificationsAsRead(userId: string): Promise<number> {
   return markAllNotificationsRead(userId);
 }

@@ -13,4 +13,6 @@ router.get('/:tag/posts', async  (req, res) => {
   res.json(await store.getPostsByTag(`#${req.params.tag.replace(/^#/, '')}`));
 });
 
+//to-do: ia-based tags
+
 export default router;

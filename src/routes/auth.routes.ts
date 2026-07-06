@@ -13,10 +13,8 @@ function isAllowedEmail(email?: string | null): boolean {
 }
 
 // POST /api/auth/sync  { idToken, name? }
-// Verifica o ID token emitido pelo Firebase Auth (login por e-mail/senha
-// ou Google) e sincroniza o usuário com o banco local: se já existe,
+// Verifica o ID token e sincroniza o usuário com o banco local: se já existe,
 // retorna o perfil existente; se é o primeiro acesso, cria um perfil novo.
-// O backend nunca vê senha — só o token assinado pelo Firebase.
 router.post('/sync', async (req, res) => {
   const { idToken, name } = req.body as { idToken?: string; name?: string };
   if (!idToken) return res.status(400).json({ error: 'idToken é obrigatório' });
@@ -41,7 +39,7 @@ router.post('/sync', async (req, res) => {
       email: decoded.email!,
       avatar: decoded.picture || '',
       course: 'Ciência da Computação',
-      bio: 'Biografia própia é coisa do passado, deixe o sistema cozinhar!',
+      bio: 'Olá pessoal, eu estou aqui no Timelens!',
       role: 'user',
       joinDate: new Date().toISOString(),
     });
